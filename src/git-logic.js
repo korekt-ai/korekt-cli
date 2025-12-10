@@ -1,6 +1,6 @@
 import { execa } from 'execa';
 import chalk from 'chalk';
-import { detectCIProvider, getPrUrl } from './utils.js';
+import { detectCIProvider, getPrUrl, getSourceBranchFromCI } from './utils.js';
 
 /**
  * Truncate content to a maximum number of lines using "head and tail".
@@ -319,7 +319,16 @@ export async function runLocalReview(targetBranch = null, ignorePatterns = null)
     // 1. Get Repo URL, current branch name, and repository root
     const { stdout: repoUrl } = await execa('git', ['remote', 'get-url', 'origin']);
     const { stdout: sourceBranch } = await execa('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
-    const branchName = sourceBranch.trim();
+    let branchName = sourceBranch.trim();
+
+    // Handle detached HEAD state (common in CI pipelines)
+    if (branchName === 'HEAD') {
+      const ciBranch = getSourceBranchFromCI();
+      if (ciBranch) {
+        branchName = ciBranch;
+        console.error(chalk.gray(`Detected source branch from CI: ${branchName}`));
+      }
+    }
 
     // Get the repository root directory - we'll run all git commands from there
     const { stdout: repoRoot } = await execa('git', ['rev-parse', '--show-toplevel']);

@@ -16,6 +16,27 @@ export function detectCIProvider() {
 }
 
 /**
+ * Get source branch name from CI environment variables
+ * Useful when git is in detached HEAD state (common in CI pipelines)
+ * @returns {string|null} Branch name or null if not in CI context
+ */
+export function getSourceBranchFromCI() {
+  // Azure DevOps: refs/heads/feature/my-branch -> feature/my-branch
+  if (process.env.SYSTEM_PULLREQUEST_SOURCEBRANCH) {
+    return process.env.SYSTEM_PULLREQUEST_SOURCEBRANCH.replace(/^refs\/heads\//, '');
+  }
+  // GitHub Actions: already just the branch name
+  if (process.env.GITHUB_HEAD_REF) {
+    return process.env.GITHUB_HEAD_REF;
+  }
+  // Bitbucket Pipelines: already just the branch name
+  if (process.env.BITBUCKET_BRANCH) {
+    return process.env.BITBUCKET_BRANCH;
+  }
+  return null;
+}
+
+/**
  * Build PR URL from CI environment variables
  * @returns {string|null} Full PR URL or null if not in CI PR context
  */

@@ -9,7 +9,7 @@ import {
   getContributors,
 } from './git-logic.js';
 import { execa } from 'execa';
-import { detectCIProvider } from './utils.js';
+import { detectCIProvider, getSourceBranchFromCI } from './utils.js';
 
 describe('parseNameStatus', () => {
   it('should correctly parse M, A, and D statuses', () => {
@@ -838,6 +838,7 @@ describe('is_ci flag in payload', () => {
     vi.mock('./utils.js', () => ({
       detectCIProvider: vi.fn(),
       getPrUrl: vi.fn().mockReturnValue(null),
+      getSourceBranchFromCI: vi.fn().mockReturnValue(null),
     }));
   });
 
@@ -1009,5 +1010,178 @@ describe('is_ci flag in payload', () => {
 
     expect(result).toBeDefined();
     expect(result.is_ci).toBe(false);
+  });
+});
+
+describe('getSourceBranchFromCI', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    vi.doUnmock('./utils.js');
+    process.env = { ...originalEnv };
+    // Clear any CI-related env vars
+    delete process.env.SYSTEM_PULLREQUEST_SOURCEBRANCH;
+    delete process.env.GITHUB_HEAD_REF;
+    delete process.env.BITBUCKET_BRANCH;
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('should return null when not in CI environment', async () => {
+    const { getSourceBranchFromCI: fn } = await import('./utils.js');
+    expect(fn()).toBeNull();
+  });
+
+  it('should extract branch name from Azure DevOps with refs/heads/ prefix', async () => {
+    process.env.SYSTEM_PULLREQUEST_SOURCEBRANCH = 'refs/heads/feature/my-branch';
+    const { getSourceBranchFromCI: fn } = await import('./utils.js');
+    expect(fn()).toBe('feature/my-branch');
+  });
+
+  it('should handle Azure DevOps branch without refs/heads/ prefix', async () => {
+    process.env.SYSTEM_PULLREQUEST_SOURCEBRANCH = 'feature/my-branch';
+    const { getSourceBranchFromCI: fn } = await import('./utils.js');
+    expect(fn()).toBe('feature/my-branch');
+  });
+
+  it('should return GitHub head ref directly', async () => {
+    process.env.GITHUB_HEAD_REF = 'feature/github-branch';
+    const { getSourceBranchFromCI: fn } = await import('./utils.js');
+    expect(fn()).toBe('feature/github-branch');
+  });
+
+  it('should return Bitbucket branch directly', async () => {
+    process.env.BITBUCKET_BRANCH = 'feature/bitbucket-branch';
+    const { getSourceBranchFromCI: fn } = await import('./utils.js');
+    expect(fn()).toBe('feature/bitbucket-branch');
+  });
+
+  it('should prefer Azure DevOps over GitHub when both are set', async () => {
+    process.env.SYSTEM_PULLREQUEST_SOURCEBRANCH = 'refs/heads/azure-branch';
+    process.env.GITHUB_HEAD_REF = 'github-branch';
+    const { getSourceBranchFromCI: fn } = await import('./utils.js');
+    expect(fn()).toBe('azure-branch');
+  });
+});
+
+describe('runLocalReview - detached HEAD handling', () => {
+  beforeEach(() => {
+    vi.mock('execa');
+    vi.mock('./utils.js', () => ({
+      detectCIProvider: vi.fn().mockReturnValue(null),
+      getPrUrl: vi.fn().mockReturnValue(null),
+      getSourceBranchFromCI: vi.fn(),
+    }));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('should use CI environment variable when git returns HEAD (detached HEAD state)', async () => {
+    // Use the statically imported getSourceBranchFromCI (line 12)
+    // which is automatically mocked by vi.mock() in beforeEach
+    vi.mocked(getSourceBranchFromCI).mockReturnValue('feature/ci-branch');
+
+    vi.mocked(execa).mockImplementation(async (cmd, args) => {
+      const command = [cmd, ...args].join(' ');
+
+      if (command.includes('remote get-url origin')) {
+        return { stdout: 'https://github.com/user/repo.git' };
+      }
+      // Simulate detached HEAD state
+      if (command.includes('rev-parse --abbrev-ref HEAD')) {
+        return { stdout: 'HEAD' };
+      }
+      if (command.includes('rev-parse --show-toplevel')) {
+        return { stdout: '/path/to/repo' };
+      }
+      if (command.includes('rev-parse --verify main')) {
+        return { stdout: 'commit-hash' };
+      }
+      if (command === 'git fetch origin main') {
+        return { stdout: '' };
+      }
+      if (command.includes('merge-base origin/main HEAD')) {
+        return { stdout: 'abc123' };
+      }
+      if (command.includes('log --no-merges --pretty=%B---EOC---')) {
+        return { stdout: 'feat: add feature---EOC---' };
+      }
+      if (command.includes('log --no-merges --format=%ae|%an')) {
+        return { stdout: 'user@example.com|User Name' };
+      }
+      if (command.includes('diff --name-status')) {
+        return { stdout: 'M\tfile.js' };
+      }
+      if (command.includes('diff -U15')) {
+        return { stdout: 'diff content' };
+      }
+      if (command.includes('show abc123:file.js')) {
+        return { stdout: 'original content' };
+      }
+
+      return { stdout: '' };
+    });
+
+    const result = await runLocalReview('main');
+
+    expect(result).toBeDefined();
+    expect(result.source_branch).toBe('feature/ci-branch');
+    expect(getSourceBranchFromCI).toHaveBeenCalled();
+  });
+
+  it('should keep HEAD as source_branch when in detached HEAD but no CI env var', async () => {
+    // getSourceBranchFromCI returns null by default (set in beforeEach mock)
+    // so no need to explicitly set it here
+
+    vi.mocked(execa).mockImplementation(async (cmd, args) => {
+      const command = [cmd, ...args].join(' ');
+
+      if (command.includes('remote get-url origin')) {
+        return { stdout: 'https://github.com/user/repo.git' };
+      }
+      // Simulate detached HEAD state
+      if (command.includes('rev-parse --abbrev-ref HEAD')) {
+        return { stdout: 'HEAD' };
+      }
+      if (command.includes('rev-parse --show-toplevel')) {
+        return { stdout: '/path/to/repo' };
+      }
+      if (command.includes('rev-parse --verify main')) {
+        return { stdout: 'commit-hash' };
+      }
+      if (command === 'git fetch origin main') {
+        return { stdout: '' };
+      }
+      if (command.includes('merge-base origin/main HEAD')) {
+        return { stdout: 'abc123' };
+      }
+      if (command.includes('log --no-merges --pretty=%B---EOC---')) {
+        return { stdout: 'feat: add feature---EOC---' };
+      }
+      if (command.includes('log --no-merges --format=%ae|%an')) {
+        return { stdout: 'user@example.com|User Name' };
+      }
+      if (command.includes('diff --name-status')) {
+        return { stdout: 'M\tfile.js' };
+      }
+      if (command.includes('diff -U15')) {
+        return { stdout: 'diff content' };
+      }
+      if (command.includes('show abc123:file.js')) {
+        return { stdout: 'original content' };
+      }
+
+      return { stdout: '' };
+    });
+
+    const result = await runLocalReview('main');
+
+    expect(result).toBeDefined();
+    expect(result.source_branch).toBe('HEAD');
   });
 });
