@@ -316,9 +316,10 @@ export async function getContributors(diffRange, repoRootPath) {
  */
 export async function runLocalReview(targetBranch = null, ignorePatterns = null) {
   try {
-    // 1. Get Repo URL, current branch name, and repository root
+    // 1. Get Repo URL, current branch name, commit hash, and repository root
     const { stdout: repoUrl } = await execa('git', ['remote', 'get-url', 'origin']);
     const { stdout: sourceBranch } = await execa('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const { stdout: commitHash } = await execa('git', ['rev-parse', 'HEAD']);
     let branchName = sourceBranch.trim();
 
     // Handle detached HEAD state (common in CI pipelines)
@@ -533,6 +534,7 @@ export async function runLocalReview(targetBranch = null, ignorePatterns = null)
       changed_files: changedFiles,
       source_branch: branchName,
       destination_branch: targetBranch,
+      commit_hash: commitHash.trim(),
       author_email,
       author_name,
       contributors,
