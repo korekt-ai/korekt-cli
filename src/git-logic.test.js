@@ -1013,6 +1013,109 @@ describe('is_ci flag in payload', () => {
   });
 });
 
+describe('destination_branch in payload', () => {
+  beforeEach(() => {
+    vi.mock('execa');
+    vi.mock('./utils.js', () => ({
+      detectCIProvider: vi.fn().mockReturnValue(null),
+      getPrUrl: vi.fn().mockReturnValue(null),
+      getSourceBranchFromCI: vi.fn().mockReturnValue(null),
+    }));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('should include destination_branch when target branch is specified', async () => {
+    vi.mocked(execa).mockImplementation(async (cmd, args) => {
+      const command = [cmd, ...args].join(' ');
+
+      if (command.includes('remote get-url origin')) {
+        return { stdout: 'https://github.com/user/repo.git' };
+      }
+      if (command.includes('rev-parse --abbrev-ref HEAD')) {
+        return { stdout: 'feature-branch' };
+      }
+      if (command.includes('rev-parse --show-toplevel')) {
+        return { stdout: '/path/to/repo' };
+      }
+      if (command.includes('rev-parse --verify main')) {
+        return { stdout: 'commit-hash' };
+      }
+      if (command === 'git fetch origin main') {
+        return { stdout: '' };
+      }
+      if (command.includes('merge-base origin/main HEAD')) {
+        return { stdout: 'abc123' };
+      }
+      if (command.includes('log --no-merges --pretty=%B---EOC---')) {
+        return { stdout: 'feat: add feature---EOC---' };
+      }
+      if (command.includes('log --no-merges --format=%ae|%an')) {
+        return { stdout: 'user@example.com|User Name' };
+      }
+      if (command.includes('diff --name-status')) {
+        return { stdout: 'M\tfile.js' };
+      }
+      if (command.includes('diff -U15')) {
+        return { stdout: 'diff content' };
+      }
+      if (command.includes('show abc123:file.js')) {
+        return { stdout: 'original content' };
+      }
+
+      return { stdout: '' };
+    });
+
+    const result = await runLocalReview('main');
+
+    expect(result).toBeDefined();
+    expect(result.destination_branch).toBe('main');
+  });
+
+  it('should have null destination_branch when no target branch specified', async () => {
+    vi.mocked(execa).mockImplementation(async (cmd, args) => {
+      const command = [cmd, ...args].join(' ');
+
+      if (command.includes('remote get-url origin')) {
+        return { stdout: 'https://github.com/user/repo.git' };
+      }
+      if (command.includes('rev-parse --abbrev-ref HEAD')) {
+        return { stdout: 'feature-branch' };
+      }
+      if (command.includes('rev-parse --show-toplevel')) {
+        return { stdout: '/path/to/repo' };
+      }
+      if (command.includes('reflog show --no-abbrev-commit')) {
+        return {
+          stdout:
+            '510572bc5197788770004d0d0585822adab0128f checkout: moving from main to feature-branch',
+        };
+      }
+      if (command.includes('log --no-merges --pretty=%B---EOC---')) {
+        return { stdout: 'feat: add feature---EOC---' };
+      }
+      if (command.includes('diff --name-status')) {
+        return { stdout: 'M\tfile.js' };
+      }
+      if (command.includes('diff -U15')) {
+        return { stdout: 'diff content' };
+      }
+      if (command.includes('show 510572bc5197788770004d0d0585822adab0128f:file.js')) {
+        return { stdout: 'original content' };
+      }
+
+      return { stdout: '' };
+    });
+
+    const result = await runLocalReview(); // No target branch
+
+    expect(result).toBeDefined();
+    expect(result.destination_branch).toBeNull();
+  });
+});
+
 describe('getSourceBranchFromCI', () => {
   const originalEnv = process.env;
 

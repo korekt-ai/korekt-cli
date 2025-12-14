@@ -532,6 +532,7 @@ export async function runLocalReview(targetBranch = null, ignorePatterns = null)
       commit_messages: commitMessages,
       changed_files: changedFiles,
       source_branch: branchName,
+      destination_branch: targetBranch,
       author_email,
       author_name,
       contributors,
