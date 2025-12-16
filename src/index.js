@@ -165,6 +165,12 @@ program
       process.exit(1);
     }
 
+    // Exit successfully if no files to review (common in CI when PR has no code changes)
+    if (payload.changed_files.length === 0) {
+      log(chalk.green('✓ No files changed to review. Exiting successfully.'));
+      return;
+    }
+
     // If dry-run, just show the payload and exit
     if (options.dryRun) {
       log(chalk.yellow('\n📋 Dry Run - Payload that would be sent:\n'));

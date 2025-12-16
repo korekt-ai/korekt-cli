@@ -259,6 +259,64 @@ describe('runLocalReview - branch fetching', () => {
   });
 });
 
+describe('runLocalReview - no files changed', () => {
+  beforeEach(() => {
+    vi.mock('execa');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('should return payload with empty changed_files when diff has no files', async () => {
+    vi.mocked(execa).mockImplementation(async (cmd, args) => {
+      const command = [cmd, ...args].join(' ');
+
+      if (command.includes('remote get-url origin')) {
+        return { stdout: 'https://github.com/user/repo.git' };
+      }
+      if (command.includes('rev-parse --abbrev-ref HEAD')) {
+        return { stdout: 'feature-branch' };
+      }
+      if (command === 'git rev-parse HEAD') {
+        return { stdout: 'abc123def456789' };
+      }
+      if (command.includes('rev-parse --show-toplevel')) {
+        return { stdout: '/path/to/repo' };
+      }
+      if (command.includes('rev-parse --verify main')) {
+        return { stdout: 'commit-hash' };
+      }
+      if (command === 'git fetch origin main') {
+        return { stdout: '' };
+      }
+      if (command.includes('merge-base origin/main HEAD')) {
+        return { stdout: 'abc123' };
+      }
+      if (command.includes('log --no-merges --pretty=%B---EOC---')) {
+        return { stdout: 'feat: some commit---EOC---' };
+      }
+      if (command.includes('log --no-merges --format=%ae|%an')) {
+        return { stdout: 'user@example.com|User Name' };
+      }
+      // No files changed
+      if (command.includes('diff --name-status')) {
+        return { stdout: '' };
+      }
+
+      return { stdout: '' };
+    });
+
+    const result = await runLocalReview('main');
+
+    expect(result).not.toBeNull();
+    expect(result.changed_files).toEqual([]);
+    expect(result.source_branch).toBe('feature-branch');
+    expect(result.destination_branch).toBe('main');
+  });
+});
+
 describe('runLocalReview - fork point detection', () => {
   beforeEach(() => {
     vi.mock('execa');
