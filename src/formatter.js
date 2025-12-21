@@ -76,9 +76,27 @@ function toAbsolutePath(filePath) {
  * @param {Object} data - The API response data
  */
 export function formatReviewOutput(data) {
-  const { review, summary } = data.data;
+  const { review, summary, change_classification: changeClassification } = data.data;
 
   console.log(chalk.bold.blue('🤖 Automated Code Review Results\n'));
+
+  // --- Change Summary Section ---
+  if (changeClassification && changeClassification.summary) {
+    console.log(chalk.bold.cyan('📝 Change Summary\n'));
+    console.log(`  ${changeClassification.summary}\n`);
+
+    const meta = [];
+    if (changeClassification.intent) {
+      meta.push(`Intent: ${changeClassification.intent}`);
+    }
+    if (changeClassification.aspects && changeClassification.aspects.length > 0) {
+      meta.push(`Aspects: ${changeClassification.aspects.join(', ')}`);
+    }
+    if (meta.length > 0) {
+      console.log(chalk.gray(`  ${meta.join(' | ')}`));
+    }
+    console.log(); // Spacing after change summary
+  }
 
   // --- Praises Section ---
   if (review && review.praises && review.praises.length > 0) {

@@ -205,6 +205,9 @@ post_inline_comment() {
 TOTAL_ISSUES=$(jq -r '.data.summary.total_issues // 0' "$RESULTS_FILE")
 TOTAL_PRAISES=$(jq -r '.data.summary.total_praises // 0' "$RESULTS_FILE")
 CRITICAL_ISSUES=$(jq -r '.data.summary.critical // 0' "$RESULTS_FILE")
+CHANGE_SUMMARY=$(jq -r '.data.change_classification?.summary // ""' "$RESULTS_FILE")
+CHANGE_INTENT=$(jq -r '.data.change_classification?.intent // ""' "$RESULTS_FILE")
+CHANGE_ASPECTS=$(jq -r '.data.change_classification?.aspects // [] | join(", ")' "$RESULTS_FILE")
 
 # Post inline comments for issues (excluding low severity)
 if [ "$TOTAL_ISSUES" -gt 0 ] && [ "$POST_INLINE_COMMENTS" = "true" ]; then
@@ -287,6 +290,20 @@ if [ "$TOTAL_ISSUES" -eq 0 ] && [ "$TOTAL_PRAISES" -eq 0 ]; then
 else
   echo "🤖 **Automated Code Review Results**" >> "$COMMENT_FILE"
   echo "" >> "$COMMENT_FILE"
+
+  # Change Summary section
+  if [ -n "$CHANGE_SUMMARY" ]; then
+    echo "### 📝 Change Summary" >> "$COMMENT_FILE"
+    echo "$CHANGE_SUMMARY" >> "$COMMENT_FILE"
+    echo "" >> "$COMMENT_FILE"
+
+    # Build metadata line
+    META=""
+    [ -n "$CHANGE_INTENT" ] && META="Intent: $CHANGE_INTENT"
+    [ -n "$CHANGE_ASPECTS" ] && { [ -n "$META" ] && META="$META | "; META="${META}Aspects: $CHANGE_ASPECTS"; }
+    [ -n "$META" ] && echo "_${META}_" >> "$COMMENT_FILE"
+    echo "" >> "$COMMENT_FILE"
+  fi
 
   # Praises section
   if [ "$TOTAL_PRAISES" -gt 0 ]; then
