@@ -1,6 +1,7 @@
 import { execa } from 'execa';
 import chalk from 'chalk';
 import { detectCIProvider, getPrUrl, getSourceBranchFromCI } from './utils.js';
+import { shouldSkip, isDiffOnly, isBinary } from './file-rules.js';
 
 /**
  * Truncate content to a maximum number of lines using "head and tail".
@@ -161,9 +162,14 @@ export function parseNameStatus(output) {
 /**
  * Analyze uncommitted changes (staged or unstaged)
  * @param {string} mode - 'staged' or 'unstaged'
+ * @param {Object} fileRulesConfig - File rules config from API (or defaults)
  * @returns {Object|null} - The payload object ready for API submission, or null on error
  */
-export async function runUncommittedReview(mode = 'unstaged') {
+export async function runUncommittedReview(mode = 'unstaged', fileRulesConfig = null) {
+  // If no config provided, use empty config (no filtering applied)
+  const config = fileRulesConfig || {};
+  const maxLines = config.max_lines ?? 2000;
+
   try {
     // 1. Get Repo URL, current branch name, and repository root
     const { stdout: repoUrl } = await execa('git', ['remote', 'get-url', 'origin']);
@@ -190,7 +196,35 @@ export async function runUncommittedReview(mode = 'unstaged') {
       console.error(chalk.gray('Analyzing unstaged changes...'));
     }
 
-    const fileList = parseNameStatus(nameStatusOutput);
+    let fileList = parseNameStatus(nameStatusOutput);
+
+    // Filter out binary/non-reviewable files (only if config has skip_extensions)
+    if (config.skip_extensions) {
+      let skippedCount = 0;
+      fileList = fileList.filter((file) => {
+        if (shouldSkip(file.path, config.skip_extensions)) {
+          skippedCount++;
+          console.error(chalk.gray(`  Skipping binary: ${file.path}`));
+          return false;
+        }
+        return true;
+      });
+
+      if (skippedCount > 0) {
+        console.error(chalk.gray(`Skipped ${skippedCount} binary file(s)\n`));
+      }
+    }
+
+    // Check if this is a large change set (only if config has large_pr_threshold)
+    const isLargePr = config.large_pr_threshold && fileList.length > config.large_pr_threshold;
+    if (isLargePr) {
+      console.error(
+        chalk.yellow(
+          `Large change set (${fileList.length} files > ${config.large_pr_threshold}). Sending diffs only.`
+        )
+      );
+    }
+
     const changedFiles = [];
 
     for (const file of fileList) {
@@ -204,11 +238,24 @@ export async function runUncommittedReview(mode = 'unstaged') {
         diff = await git('diff', '-U15', '--', path);
       }
 
+      // Determine if we should include content for this file
+      const skipContent =
+        isLargePr ||
+        isDiffOnly(path, config.diff_only_extensions, config.diff_only_files) ||
+        status === 'A';
+
       // Get current content from HEAD (before changes)
       let content = '';
-      if (status !== 'A') {
+      if (!skipContent && status !== 'A') {
         try {
-          content = await git('show', `HEAD:${oldPath}`);
+          const originalContent = await git('show', `HEAD:${oldPath}`);
+
+          // Check if content is binary
+          if (isBinary(originalContent)) {
+            console.error(chalk.gray(`  Skipping binary content: ${path}`));
+          } else {
+            content = truncateContent(originalContent, maxLines);
+          }
         } catch {
           console.warn(
             chalk.yellow(`Could not get HEAD content for ${oldPath}. Assuming it's new.`)
@@ -216,21 +263,24 @@ export async function runUncommittedReview(mode = 'unstaged') {
         }
       }
 
-      // Truncate content
-      content = truncateContent(content);
-
       // For deleted files, truncate the diff as well
       if (status === 'D') {
-        diff = truncateContent(diff);
+        diff = truncateContent(diff, maxLines);
       }
 
-      changedFiles.push({
+      // Build the file object - only include content if we have it
+      const fileObj = {
         path: path,
         status: status,
         diff: diff,
-        content: content,
         ...((status === 'R' || status === 'C') && { old_path: oldPath }),
-      });
+      };
+
+      if (content) {
+        fileObj.content = content;
+      }
+
+      changedFiles.push(fileObj);
     }
 
     if (!nameStatusOutput.trim() && changedFiles.length === 0) {
@@ -312,9 +362,18 @@ export async function getContributors(diffRange, repoRootPath) {
  * Main function to analyze local git changes and prepare review payload
  * @param {string|null} targetBranch - The branch to compare against. If null, uses git reflog to find fork point.
  * @param {string[]|null} ignorePatterns - Array of glob patterns to ignore files
+ * @param {Object} fileRulesConfig - File rules config from API (or defaults)
  * @returns {Object|null} - The payload object ready for API submission, or null on error
  */
-export async function runLocalReview(targetBranch = null, ignorePatterns = null) {
+export async function runLocalReview(
+  targetBranch = null,
+  ignorePatterns = null,
+  fileRulesConfig = null
+) {
+  // If no config provided, use empty config (no filtering applied)
+  const config = fileRulesConfig || {};
+  const maxLines = config.max_lines ?? 2000;
+
   try {
     // 1. Get Repo URL, current branch name, commit hash, and repository root
     const { stdout: repoUrl } = await execa('git', ['remote', 'get-url', 'origin']);
@@ -454,7 +513,7 @@ export async function runLocalReview(targetBranch = null, ignorePatterns = null)
     });
     const fileList = parseNameStatus(nameStatusOutput);
 
-    // Filter out ignored files
+    // Filter out ignored files (user-specified patterns)
     let filteredFileList = fileList;
     let ignoredCount = 0;
     if (ignorePatterns && ignorePatterns.length > 0) {
@@ -472,9 +531,38 @@ export async function runLocalReview(targetBranch = null, ignorePatterns = null)
       console.error(chalk.gray(`Ignored ${ignoredCount} file(s) based on patterns\n`));
     }
 
+    // Filter out binary/non-reviewable files (only if config has skip_extensions)
+    if (config.skip_extensions) {
+      let skippedCount = 0;
+      filteredFileList = filteredFileList.filter((file) => {
+        if (shouldSkip(file.path, config.skip_extensions)) {
+          skippedCount++;
+          console.error(chalk.gray(`  Skipping binary: ${file.path}`));
+          return false;
+        }
+        return true;
+      });
+
+      if (skippedCount > 0) {
+        console.error(chalk.gray(`Skipped ${skippedCount} binary file(s)\n`));
+      }
+    }
+
+    // Check if this is a large PR (only if config has large_pr_threshold)
+    const isLargePr =
+      config.large_pr_threshold && filteredFileList.length > config.large_pr_threshold;
+    if (isLargePr) {
+      console.error(
+        chalk.yellow(
+          `Large PR detected (${filteredFileList.length} files > ${config.large_pr_threshold}). Sending diffs only.`
+        )
+      );
+    }
+
     console.error(chalk.gray(`Collecting diffs for ${filteredFileList.length} file(s)...`));
 
     const changedFiles = [];
+
     for (const file of filteredFileList) {
       const { status, path, oldPath } = file;
 
@@ -484,17 +572,30 @@ export async function runLocalReview(targetBranch = null, ignorePatterns = null)
         cwd: repoRootPath,
       });
 
-      // Get the original content from the base commit
+      // Determine if we should include content for this file
+      // Skip content for: large PRs, DIFF_ONLY files, deleted files, or added files
+      const skipContent =
+        isLargePr ||
+        isDiffOnly(path, config.diff_only_extensions, config.diff_only_files) ||
+        status === 'A';
+
+      // Get the original content from the base commit (unless we're skipping it)
       let content = '';
-      if (status !== 'A') {
-        // Added files have no original content
+      if (!skipContent && status !== 'A') {
         try {
           const { stdout: originalContent } = await execa(
             'git',
             ['show', `${mergeBase.trim()}:${oldPath}`],
             { cwd: repoRootPath }
           );
-          content = originalContent;
+
+          // Check if content is binary
+          if (isBinary(originalContent)) {
+            console.error(chalk.gray(`  Skipping binary content: ${path}`));
+            // Don't include content for binary files
+          } else {
+            content = truncateContent(originalContent, maxLines);
+          }
         } catch {
           // This can happen if a file was added and modified in the same branch
           console.warn(
@@ -503,22 +604,26 @@ export async function runLocalReview(targetBranch = null, ignorePatterns = null)
         }
       }
 
-      // Truncate content
-      content = truncateContent(content);
-
       // For deleted files, truncate the diff as well
       let truncatedDiff = diff;
       if (status === 'D') {
-        truncatedDiff = truncateContent(diff);
+        truncatedDiff = truncateContent(diff, maxLines);
       }
 
-      changedFiles.push({
+      // Build the file object - only include content if we have it
+      const fileObj = {
         path: path,
         status: status,
         diff: truncatedDiff,
-        content: content,
-        ...((status === 'R' || status === 'C') && { old_path: oldPath }), // Include old_path for renames and copies
-      });
+        ...((status === 'R' || status === 'C') && { old_path: oldPath }),
+      };
+
+      // Only include content field if we have content
+      if (content) {
+        fileObj.content = content;
+      }
+
+      changedFiles.push(fileObj);
     }
 
     // 5. Get contributors from commits

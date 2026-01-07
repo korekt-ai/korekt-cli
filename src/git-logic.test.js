@@ -1298,6 +1298,228 @@ describe('getSourceBranchFromCI', () => {
   });
 });
 
+describe('fileRulesConfig filtering', () => {
+  beforeEach(() => {
+    vi.mock('execa');
+    vi.mock('./utils.js', () => ({
+      detectCIProvider: vi.fn().mockReturnValue(null),
+      getPrUrl: vi.fn().mockReturnValue(null),
+      getSourceBranchFromCI: vi.fn().mockReturnValue(null),
+    }));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('should exclude files matching skip_extensions', async () => {
+    vi.mocked(execa).mockImplementation(async (cmd, args) => {
+      const command = [cmd, ...args].join(' ');
+
+      if (command.includes('remote get-url origin')) {
+        return { stdout: 'https://github.com/user/repo.git' };
+      }
+      if (command.includes('rev-parse --abbrev-ref HEAD')) {
+        return { stdout: 'feature-branch' };
+      }
+      if (command.includes('rev-parse --show-toplevel')) {
+        return { stdout: '/fake/repo/path' };
+      }
+      if (command.includes('diff --cached --name-status')) {
+        return { stdout: 'M\tfile.js\nM\timage.png\nM\tphoto.jpg' };
+      }
+      if (command.includes('diff --cached -U15 -- file.js')) {
+        return { stdout: 'diff for file.js' };
+      }
+      if (command.includes('diff --cached -U15 -- image.png')) {
+        return { stdout: 'diff for image.png' };
+      }
+      if (command.includes('diff --cached -U15 -- photo.jpg')) {
+        return { stdout: 'diff for photo.jpg' };
+      }
+      if (command.includes('show HEAD:file.js')) {
+        return { stdout: 'js content' };
+      }
+      if (command.includes('show HEAD:image.png')) {
+        return { stdout: 'png content' };
+      }
+      if (command.includes('show HEAD:photo.jpg')) {
+        return { stdout: 'jpg content' };
+      }
+
+      throw new Error(`Unmocked command: ${command}`);
+    });
+
+    const config = {
+      skip_extensions: ['.png', '.jpg'],
+    };
+
+    const result = await runUncommittedReview('staged', config);
+
+    expect(result).toBeDefined();
+    expect(result.changed_files).toHaveLength(1);
+    expect(result.changed_files[0].path).toBe('file.js');
+  });
+
+  it('should not include content for diff_only files', async () => {
+    vi.mocked(execa).mockImplementation(async (cmd, args) => {
+      const command = [cmd, ...args].join(' ');
+
+      if (command.includes('remote get-url origin')) {
+        return { stdout: 'https://github.com/user/repo.git' };
+      }
+      if (command.includes('rev-parse --abbrev-ref HEAD')) {
+        return { stdout: 'feature-branch' };
+      }
+      if (command.includes('rev-parse --show-toplevel')) {
+        return { stdout: '/fake/repo/path' };
+      }
+      if (command.includes('diff --cached --name-status')) {
+        return { stdout: 'M\tfile.js\nM\tpackage-lock.json\nM\tconfig.yaml' };
+      }
+      if (command.includes('diff --cached -U15 -- file.js')) {
+        return { stdout: 'diff for file.js' };
+      }
+      if (command.includes('diff --cached -U15 -- package-lock.json')) {
+        return { stdout: 'diff for package-lock.json' };
+      }
+      if (command.includes('diff --cached -U15 -- config.yaml')) {
+        return { stdout: 'diff for config.yaml' };
+      }
+      if (command.includes('show HEAD:file.js')) {
+        return { stdout: 'js content' };
+      }
+      if (command.includes('show HEAD:package-lock.json')) {
+        return { stdout: 'lock content' };
+      }
+      if (command.includes('show HEAD:config.yaml')) {
+        return { stdout: 'yaml content' };
+      }
+
+      throw new Error(`Unmocked command: ${command}`);
+    });
+
+    const config = {
+      diff_only_extensions: ['.yaml'],
+      diff_only_files: ['package-lock.json'],
+    };
+
+    const result = await runUncommittedReview('staged', config);
+
+    expect(result).toBeDefined();
+    expect(result.changed_files).toHaveLength(3);
+
+    const jsFile = result.changed_files.find((f) => f.path === 'file.js');
+    const lockFile = result.changed_files.find((f) => f.path === 'package-lock.json');
+    const yamlFile = result.changed_files.find((f) => f.path === 'config.yaml');
+
+    expect(jsFile.content).toBe('js content');
+    expect(lockFile.content).toBeUndefined();
+    expect(yamlFile.content).toBeUndefined();
+  });
+
+  it('should not include content for any file when large_pr_threshold exceeded', async () => {
+    vi.mocked(execa).mockImplementation(async (cmd, args) => {
+      const command = [cmd, ...args].join(' ');
+
+      if (command.includes('remote get-url origin')) {
+        return { stdout: 'https://github.com/user/repo.git' };
+      }
+      if (command.includes('rev-parse --abbrev-ref HEAD')) {
+        return { stdout: 'feature-branch' };
+      }
+      if (command.includes('rev-parse --show-toplevel')) {
+        return { stdout: '/fake/repo/path' };
+      }
+      if (command.includes('diff --cached --name-status')) {
+        return { stdout: 'M\tfile1.js\nM\tfile2.js\nM\tfile3.js' };
+      }
+      if (command.includes('diff --cached -U15 -- file1.js')) {
+        return { stdout: 'diff for file1.js' };
+      }
+      if (command.includes('diff --cached -U15 -- file2.js')) {
+        return { stdout: 'diff for file2.js' };
+      }
+      if (command.includes('diff --cached -U15 -- file3.js')) {
+        return { stdout: 'diff for file3.js' };
+      }
+      if (command.includes('show HEAD:file1.js')) {
+        return { stdout: 'content1' };
+      }
+      if (command.includes('show HEAD:file2.js')) {
+        return { stdout: 'content2' };
+      }
+      if (command.includes('show HEAD:file3.js')) {
+        return { stdout: 'content3' };
+      }
+
+      throw new Error(`Unmocked command: ${command}`);
+    });
+
+    const config = {
+      large_pr_threshold: 2, // 3 files > 2 threshold
+    };
+
+    const result = await runUncommittedReview('staged', config);
+
+    expect(result).toBeDefined();
+    expect(result.changed_files).toHaveLength(3);
+
+    // All files should have no content due to large PR
+    for (const file of result.changed_files) {
+      expect(file.content).toBeUndefined();
+      expect(file.diff).toBeDefined();
+    }
+  });
+
+  it('should include content when below large_pr_threshold', async () => {
+    vi.mocked(execa).mockImplementation(async (cmd, args) => {
+      const command = [cmd, ...args].join(' ');
+
+      if (command.includes('remote get-url origin')) {
+        return { stdout: 'https://github.com/user/repo.git' };
+      }
+      if (command.includes('rev-parse --abbrev-ref HEAD')) {
+        return { stdout: 'feature-branch' };
+      }
+      if (command.includes('rev-parse --show-toplevel')) {
+        return { stdout: '/fake/repo/path' };
+      }
+      if (command.includes('diff --cached --name-status')) {
+        return { stdout: 'M\tfile1.js\nM\tfile2.js' };
+      }
+      if (command.includes('diff --cached -U15 -- file1.js')) {
+        return { stdout: 'diff for file1.js' };
+      }
+      if (command.includes('diff --cached -U15 -- file2.js')) {
+        return { stdout: 'diff for file2.js' };
+      }
+      if (command.includes('show HEAD:file1.js')) {
+        return { stdout: 'content1' };
+      }
+      if (command.includes('show HEAD:file2.js')) {
+        return { stdout: 'content2' };
+      }
+
+      throw new Error(`Unmocked command: ${command}`);
+    });
+
+    const config = {
+      large_pr_threshold: 5, // 2 files < 5 threshold
+    };
+
+    const result = await runUncommittedReview('staged', config);
+
+    expect(result).toBeDefined();
+    expect(result.changed_files).toHaveLength(2);
+
+    // All files should have content
+    for (const file of result.changed_files) {
+      expect(file.content).toBeDefined();
+    }
+  });
+});
+
 describe('runLocalReview - detached HEAD handling', () => {
   beforeEach(() => {
     vi.mock('execa');
