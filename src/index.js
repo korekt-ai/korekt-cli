@@ -23,6 +23,28 @@ const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
 
 /**
+ * Fetch file processing rules from the API.
+ * These rules control which files to skip, which to show diff-only, etc.
+ * @param {string} apiEndpoint - The API endpoint URL
+ * @param {string} apiKey - The API key for authentication
+ * @returns {Promise<Object|null>} - Config object or null if fetch fails
+ */
+async function fetchFileRulesConfig(apiEndpoint, apiKey) {
+  try {
+    const configEndpoint = apiEndpoint.replace(/\/review\/?$/, '/config/file-rules');
+    const response = await axios.get(configEndpoint, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      timeout: 3000,
+    });
+    return response.data;
+  } catch {
+    // Non-fatal: continue without filtering if config unavailable
+    log(chalk.yellow('Warning: Could not fetch file rules config.'));
+    return null;
+  }
+}
+
+/**
  * Helper functions for clean output separation:
  * - log() writes to stderr (progress, info, errors)
  * - output() writes to stdout (final data only)
@@ -157,8 +179,11 @@ program
       process.exit(1);
     }
 
+    // Fetch file rules config from API
+    const fileRulesConfig = await fetchFileRulesConfig(apiEndpoint, apiKey);
+
     // Gather all data using our git logic module
-    const payload = await runLocalReview(targetBranch, options.ignore);
+    const payload = await runLocalReview(targetBranch, options.ignore, fileRulesConfig);
 
     if (!payload) {
       log(chalk.red('Could not proceed with review due to errors during analysis.'));
@@ -334,8 +359,11 @@ async function reviewUncommitted(mode, options) {
     process.exit(1);
   }
 
+  // Fetch file rules config from API
+  const fileRulesConfig = await fetchFileRulesConfig(apiEndpoint, apiKey);
+
   const { runUncommittedReview } = await import('./git-logic.js');
-  const payload = await runUncommittedReview(mode);
+  const payload = await runUncommittedReview(mode, fileRulesConfig);
 
   if (!payload) {
     log(chalk.red('No changes found or error occurred during analysis.'));

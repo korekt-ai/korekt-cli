@@ -215,6 +215,14 @@ export async function runUncommittedReview(mode = 'unstaged', fileRulesConfig = 
       }
     }
 
+    // Check if file count exceeds max_files_for_content limit
+    if (config.max_files_for_content && fileList.length > config.max_files_for_content) {
+      throw new Error(
+        `Too many files: ${fileList.length} files exceeds the limit of ${config.max_files_for_content}. ` +
+          `Please reduce the number of changed files before reviewing.`
+      );
+    }
+
     // Check if this is a large change set (only if config has large_pr_threshold)
     const isLargePr = config.large_pr_threshold && fileList.length > config.large_pr_threshold;
     if (isLargePr) {
@@ -546,6 +554,14 @@ export async function runLocalReview(
       if (skippedCount > 0) {
         console.error(chalk.gray(`Skipped ${skippedCount} binary file(s)\n`));
       }
+    }
+
+    // Check if file count exceeds max_files_for_content limit
+    if (config.max_files_for_content && filteredFileList.length > config.max_files_for_content) {
+      throw new Error(
+        `Too many files: ${filteredFileList.length} files exceeds the limit of ${config.max_files_for_content}. ` +
+          `Please split this PR into smaller reviews or use --ignore to exclude some files.`
+      );
     }
 
     // Check if this is a large PR (only if config has large_pr_threshold)
