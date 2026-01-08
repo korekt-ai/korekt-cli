@@ -153,6 +153,36 @@ describe('CLI JSON output mode', () => {
       expect(displayFile.diff).not.toContain('truncated');
       expect(displayFile.content).not.toContain('truncated');
     });
+
+    it('should handle diff-only files without content', () => {
+      const file = {
+        path: 'test.js',
+        status: 'M',
+        diff: 'some diff here',
+        // no content field - this is a diff-only file
+      };
+
+      const displayFile = truncateFileData(file);
+
+      expect(displayFile.path).toBe('test.js');
+      expect(displayFile.status).toBe('M');
+      expect(displayFile.diff).toBe('some diff here');
+      expect(displayFile.content).toBeUndefined();
+    });
+
+    it('should handle files with neither diff nor content', () => {
+      const file = {
+        path: 'deleted.js',
+        status: 'D',
+      };
+
+      const displayFile = truncateFileData(file);
+
+      expect(displayFile.path).toBe('deleted.js');
+      expect(displayFile.status).toBe('D');
+      expect(displayFile.diff).toBeUndefined();
+      expect(displayFile.content).toBeUndefined();
+    });
   });
 
   describe('error formatting for JSON mode', () => {

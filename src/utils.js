@@ -73,19 +73,27 @@ export function getPrUrl() {
  * @returns {Object} File object with truncated diff and content
  */
 export function truncateFileData(file, maxLength = 500) {
-  return {
+  const result = {
     path: file.path,
     status: file.status,
     ...(file.old_path && { old_path: file.old_path }),
-    diff:
+  };
+
+  if (file.diff) {
+    result.diff =
       file.diff.length > maxLength
         ? `${file.diff.substring(0, maxLength)}... [truncated ${file.diff.length - maxLength} chars]`
-        : file.diff,
-    content:
+        : file.diff;
+  }
+
+  if (file.content) {
+    result.content =
       file.content.length > maxLength
         ? `${file.content.substring(0, maxLength)}... [truncated ${file.content.length - maxLength} chars]`
-        : file.content,
-  };
+        : file.content;
+  }
+
+  return result;
 }
 
 /**
