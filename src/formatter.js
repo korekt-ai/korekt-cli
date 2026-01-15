@@ -76,7 +76,7 @@ function toAbsolutePath(filePath) {
  * @param {Object} data - The API response data
  */
 export function formatReviewOutput(data) {
-  const { review, summary, change_classification: changeClassification } = data.data;
+  const { review, summary, change_classification: changeClassification, model } = data.data;
 
   console.log(chalk.bold.blue('🤖 Automated Code Review Results\n'));
 
@@ -161,5 +161,10 @@ export function formatReviewOutput(data) {
       }
       console.log(); // Add a blank line for spacing
     });
+  }
+
+  // Footer with model info
+  if (model) {
+    console.log(chalk.gray(`Analyzed with ${model}`));
   }
 }

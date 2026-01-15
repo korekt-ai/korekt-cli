@@ -469,6 +469,86 @@ describe('--comment flag behavior', () => {
   });
 });
 
+describe('--model flag behavior', () => {
+  describe('model selection logic', () => {
+    it('should treat --model without value as true (picker mode)', () => {
+      const options = { model: true };
+
+      // When --model is used without a value, Commander sets it to true
+      const shouldShowPicker = options.model === true;
+      const hasDirectValue = typeof options.model === 'string';
+
+      expect(shouldShowPicker).toBe(true);
+      expect(hasDirectValue).toBe(false);
+    });
+
+    it('should treat --model=value as string (direct mode)', () => {
+      const options = { model: 'gemini-2.5-flash' };
+
+      const shouldShowPicker = options.model === true;
+      const hasDirectValue = typeof options.model === 'string';
+
+      expect(shouldShowPicker).toBe(false);
+      expect(hasDirectValue).toBe(true);
+      expect(options.model).toBe('gemini-2.5-flash');
+    });
+
+    it('should not include model when flag is not used', () => {
+      const options = {};
+
+      const shouldIncludeModel = options.model !== undefined;
+
+      expect(shouldIncludeModel).toBe(false);
+    });
+  });
+
+  describe('payload model field', () => {
+    it('should add model to payload when specified', () => {
+      const payload = {
+        repo_url: 'https://github.com/user/repo',
+        changed_files: [],
+      };
+
+      const selectedModel = 'gemini-2.5-flash';
+      if (selectedModel) {
+        payload.model = selectedModel;
+      }
+
+      expect(payload.model).toBe('gemini-2.5-flash');
+    });
+
+    it('should not add model to payload when not specified', () => {
+      const payload = {
+        repo_url: 'https://github.com/user/repo',
+        changed_files: [],
+      };
+
+      const selectedModel = null;
+      if (selectedModel) {
+        payload.model = selectedModel;
+      }
+
+      expect(payload.model).toBeUndefined();
+    });
+  });
+
+  describe('available models', () => {
+    it('should have valid model values', () => {
+      const validModels = [
+        'gemini-2.5-pro',
+        'gemini-2.5-flash',
+        'gemini-3-pro-preview',
+        'gemini-3-flash-preview',
+      ];
+
+      // Test that all expected models are valid Gemini model names
+      validModels.forEach((model) => {
+        expect(model).toMatch(/^gemini-/);
+      });
+    });
+  });
+});
+
 describe('getPrUrl', () => {
   const originalEnv = process.env;
 

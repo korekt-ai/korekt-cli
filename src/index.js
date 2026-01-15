@@ -73,6 +73,57 @@ async function confirmAction(message) {
 }
 
 /**
+ * Available Gemini models for code review
+ */
+const GEMINI_MODELS = [
+  { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro (high quality)' },
+  { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash (avoid, the worst quality)' },
+  { value: 'gemini-3-pro-preview', label: 'gemini-3-pro-preview (experimental - the best model)' },
+  {
+    value: 'gemini-3-flash-preview',
+    label: 'gemini-3-flash-preview (experimental - the most efficient model)',
+  },
+];
+
+/**
+ * Prompt user to select a Gemini model
+ * @returns {Promise<string>} - Selected model name
+ * @throws {Error} - If not running in interactive terminal
+ */
+async function selectModel() {
+  // Check if running in interactive terminal
+  if (!process.stdin.isTTY) {
+    log(chalk.red('Error: --model flag requires a value in non-interactive environments.'));
+    log(chalk.gray('Example: kk review --model=gemini-2.5-pro'));
+    process.exit(1);
+  }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stderr,
+  });
+
+  log(chalk.yellow('\nSelect Gemini model:\n'));
+  GEMINI_MODELS.forEach((model, index) => {
+    log(`  ${index + 1}. ${model.label}`);
+  });
+  log('');
+
+  return new Promise((resolvePromise) => {
+    rl.question(chalk.bold('Enter number (1-4): '), (answer) => {
+      rl.close();
+      const num = parseInt(answer, 10);
+      if (num >= 1 && num <= GEMINI_MODELS.length) {
+        resolvePromise(GEMINI_MODELS[num - 1].value);
+      } else {
+        log(chalk.red('Invalid selection. Please run the command again and enter 1-4.'));
+        process.exit(1);
+      }
+    });
+  });
+}
+
+/**
  * Run the CI integration script to post comments
  * @param {string} provider - CI provider (github, azure, bitbucket)
  * @param {Object} results - Review results from API
@@ -128,6 +179,8 @@ program
 Examples:
   $ kk review                      Review committed changes (auto-detect base)
   $ kk review main                 Review changes against main branch
+  $ kk review --model              Select Gemini model interactively
+  $ kk review -m gemini-2.5-pro    Use specific model
   $ kk stg --dry-run               Preview staged changes review
   $ kk diff                        Review unstaged changes
   $ kk review main --json          Output raw JSON (for CI/CD integration)
@@ -137,6 +190,7 @@ Common Options:
   --dry-run                        Show payload without sending to API
   --json                           Output raw API response as JSON
   --comment                        Post review results as PR comments
+  -m, --model [name]               Gemini model (picker if no value)
 
 Configuration:
   $ kk config --key YOUR_KEY
@@ -159,6 +213,7 @@ program
   .option('--json', 'Output raw API response as JSON')
   .option('--comment', 'Post review results as PR comments (auto-detects CI provider)')
   .option('--post-ticket', 'Post review results to linked ticket (e.g., JIRA)')
+  .option('-m, --model [name]', 'Gemini model to use (interactive picker if no value provided)')
   .action(async (targetBranch, options) => {
     const reviewTarget = targetBranch ? `against '${targetBranch}'` : '(auto-detecting fork point)';
 
@@ -177,6 +232,15 @@ program
         chalk.red('API Endpoint not found! Please run `kk config --endpoint YOUR_ENDPOINT` first.')
       );
       process.exit(1);
+    }
+
+    // Handle model selection: if --model without value, show picker
+    let selectedModel = null;
+    if (options.model === true) {
+      selectedModel = await selectModel();
+      log(chalk.green(`Using model: ${selectedModel}\n`));
+    } else if (typeof options.model === 'string') {
+      selectedModel = options.model;
     }
 
     // Fetch file rules config from API
@@ -205,6 +269,11 @@ program
         ...payload,
         changed_files: payload.changed_files.map((file) => truncateFileData(file)),
       };
+
+      // Add model if specified
+      if (selectedModel) {
+        displayPayload.model = selectedModel;
+      }
 
       log(JSON.stringify(displayPayload, null, 2));
       log(chalk.gray('\n💡 Run without --dry-run to send to API'));
@@ -253,6 +322,11 @@ program
     // Add post_to_ticket flag if requested
     if (options.postTicket) {
       payload.post_to_ticket = true;
+    }
+
+    // Add model if specified
+    if (selectedModel) {
+      payload.model = selectedModel;
     }
 
     try {
@@ -328,6 +402,7 @@ program
   .description('Review staged changes (git diff --cached)')
   .option('--dry-run', 'Show payload without sending to API')
   .option('--json', 'Output raw API response as JSON')
+  .option('-m, --model [name]', 'Gemini model to use (interactive picker if no value provided)')
   .action(async (options) => {
     log(chalk.blue.bold('🚀 Reviewing staged changes...'));
     await reviewUncommitted('staged', options);
@@ -339,6 +414,7 @@ program
   .description('Review unstaged changes (git diff)')
   .option('--dry-run', 'Show payload without sending to API')
   .option('--json', 'Output raw API response as JSON')
+  .option('-m, --model [name]', 'Gemini model to use (interactive picker if no value provided)')
   .action(async (options) => {
     log(chalk.blue.bold('🚀 Reviewing unstaged changes...'));
     await reviewUncommitted('unstaged', options);
@@ -359,6 +435,15 @@ async function reviewUncommitted(mode, options) {
     process.exit(1);
   }
 
+  // Handle model selection: if --model without value, show picker
+  let selectedModel = null;
+  if (options.model === true) {
+    selectedModel = await selectModel();
+    log(chalk.green(`Using model: ${selectedModel}\n`));
+  } else if (typeof options.model === 'string') {
+    selectedModel = options.model;
+  }
+
   // Fetch file rules config from API
   const fileRulesConfig = await fetchFileRulesConfig(apiEndpoint, apiKey);
 
@@ -377,6 +462,11 @@ async function reviewUncommitted(mode, options) {
       ...payload,
       changed_files: payload.changed_files.map((file) => truncateFileData(file)),
     };
+
+    // Add model if specified
+    if (selectedModel) {
+      displayPayload.model = selectedModel;
+    }
 
     log(JSON.stringify(displayPayload, null, 2));
     log(chalk.gray('\n💡 Run without --dry-run to send to API'));
@@ -408,6 +498,11 @@ async function reviewUncommitted(mode, options) {
       log(chalk.yellow('Review cancelled.'));
       return;
     }
+  }
+
+  // Add model if specified
+  if (selectedModel) {
+    payload.model = selectedModel;
   }
 
   const spinner = ora('Submitting review to the AI...').start();
