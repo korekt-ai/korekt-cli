@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { truncateFileData, formatErrorOutput, detectCIProvider, getPrUrl } from './index.js';
+import {
+  truncateFileData,
+  formatErrorOutput,
+  detectCIProvider,
+  getPrUrl,
+  handleSkippedResponse,
+} from './index.js';
 
 describe('CLI JSON output mode', () => {
   let stdoutSpy;
@@ -546,6 +552,114 @@ describe('--model flag behavior', () => {
         expect(model).toMatch(/^gemini-/);
       });
     });
+  });
+});
+
+describe('skipped response handling', () => {
+  let stdoutSpy;
+
+  beforeEach(() => {
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('should return true and call spinner.info when response is skipped', () => {
+    const response = {
+      data: {
+        skipped: true,
+        reason: 'webhook_mode_active',
+        message: 'Review skipped due to webhook mode.',
+      },
+    };
+    const options = { json: false };
+    const spinner = { info: vi.fn() };
+
+    const result = handleSkippedResponse(response, options, spinner);
+
+    expect(result).toBe(true);
+    expect(spinner.info).toHaveBeenCalledWith('Review skipped due to webhook mode.');
+  });
+
+  it('should return false when response is not skipped', () => {
+    const response = {
+      data: {
+        review: { issues: [], praises: [] },
+        summary: { total_issues: 0 },
+      },
+    };
+    const options = { json: false };
+    const spinner = { info: vi.fn() };
+
+    const result = handleSkippedResponse(response, options, spinner);
+
+    expect(result).toBe(false);
+    expect(spinner.info).not.toHaveBeenCalled();
+  });
+
+  it('should output JSON to stdout when json option is true and response is skipped', () => {
+    const response = {
+      data: {
+        skipped: true,
+        reason: 'local_reviews_disabled',
+        message: 'Local reviews disabled.',
+      },
+    };
+    const options = { json: true };
+    const spinner = { info: vi.fn() };
+
+    handleSkippedResponse(response, options, spinner);
+
+    expect(stdoutSpy).toHaveBeenCalledWith(JSON.stringify(response.data, null, 2) + '\n');
+  });
+
+  it('should not output JSON when json option is false', () => {
+    const response = {
+      data: {
+        skipped: true,
+        reason: 'reviews_disabled',
+        message: 'Reviews disabled.',
+      },
+    };
+    const options = { json: false };
+    const spinner = { info: vi.fn() };
+
+    handleSkippedResponse(response, options, spinner);
+
+    expect(stdoutSpy).not.toHaveBeenCalled();
+  });
+
+  it('should use default message when response message is empty', () => {
+    const response = {
+      data: {
+        skipped: true,
+        reason: 'webhook_mode_active',
+      },
+    };
+    const options = { json: false };
+    const spinner = { info: vi.fn() };
+
+    handleSkippedResponse(response, options, spinner);
+
+    expect(spinner.info).toHaveBeenCalledWith('Review skipped.');
+  });
+
+  it('should handle all skip reason types', () => {
+    const reasons = ['webhook_mode_active', 'reviews_disabled', 'local_reviews_disabled'];
+    const spinner = { info: vi.fn() };
+
+    reasons.forEach((reason) => {
+      const response = {
+        data: { skipped: true, reason, message: `Skipped: ${reason}` },
+      };
+
+      const result = handleSkippedResponse(response, { json: false }, spinner);
+      expect(result).toBe(true);
+    });
+
+    expect(spinner.info).toHaveBeenCalledTimes(3);
   });
 });
 

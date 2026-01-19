@@ -73,6 +73,24 @@ async function confirmAction(message) {
 }
 
 /**
+ * Handle skipped response from API (when integration mode prevents CLI review)
+ * @param {Object} response - Axios response object
+ * @param {Object} options - Command options (json flag, etc.)
+ * @param {Object} spinner - Ora spinner instance
+ * @returns {boolean} - True if response was skipped, false otherwise
+ */
+export function handleSkippedResponse(response, options, spinner) {
+  if (response.data.skipped) {
+    spinner.info(response.data.message || 'Review skipped.');
+    if (options.json) {
+      output(JSON.stringify(response.data, null, 2));
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
  * Available Gemini models for code review
  */
 const GEMINI_MODELS = [
@@ -339,6 +357,12 @@ program
 
       clearInterval(timer);
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
+
+      // Handle skipped response (integration mode prevents CLI review)
+      if (handleSkippedResponse(response, options, spinner)) {
+        return;
+      }
+
       spinner.succeed(`Review completed in ${elapsed}s!`);
 
       // Handle --comment flag: post results to PR
@@ -523,6 +547,12 @@ async function reviewUncommitted(mode, options) {
 
     clearInterval(timer);
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
+
+    // Handle skipped response (integration mode prevents CLI review)
+    if (handleSkippedResponse(response, options, spinner)) {
+      return;
+    }
+
     spinner.succeed(`Review completed in ${elapsed}s!`);
 
     // Output results to stdout
