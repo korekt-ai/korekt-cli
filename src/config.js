@@ -44,13 +44,3 @@ export function getApiEndpoint() {
 export function setApiEndpoint(endpoint) {
   config.set('apiEndpoint', endpoint);
 }
-
-/**
- * Get all configuration
- */
-export function getConfig() {
-  return {
-    apiKey: getApiKey(),
-    apiEndpoint: getApiEndpoint(),
-  };
-}
