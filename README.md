@@ -4,17 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/korekt-cli.svg)](https://www.npmjs.com/package/korekt-cli)
 [![license](https://img.shields.io/npm/l/korekt-cli.svg)](https://www.npmjs.com/package/korekt-cli)
 
-AI-powered code review CLI - Keep your kode korekt
-
-`kk` integrates seamlessly with your local Git workflow to provide intelligent code reviews powered by AI.
-
-## Features
-
-*   **AI-Powered Analysis**: Get instant, intelligent code reviews with severity levels, categories, and actionable suggestions
-*   **Local Git Integration**: Works with committed changes, staged changes, and unstaged modifications
-*   **Ticket Context Enrichment**: Server-side ticket extraction from branch names and commit messages (Jira & Azure DevOps)
-*   **Beautiful Output**: Color-coded issues with severity indicators, file locations, and suggested fixes
-*   **Ultra-Fast**: Short command syntax (`kk`) for maximum developer efficiency
+AI-powered code review from your terminal.
 
 ## Installation
 
@@ -22,112 +12,81 @@ AI-powered code review CLI - Keep your kode korekt
 npm install -g korekt-cli
 ```
 
-## Quick Start
-
-Configure the CLI with your API credentials:
+## Setup
 
 ```bash
 kk config --key YOUR_API_KEY
-kk config --endpoint https://api.korekt.ai/api/review
 ```
 
-Run your first review:
+## Local Workflow
+
+### Review Your Changes
 
 ```bash
-# Review committed changes against a target branch
-kk review main
-
-# Review only staged changes
-kk stg
-
-# Review only unstaged changes
-kk diff
-
-
+kk review main              # Review commits against main
+kk stg                      # Review staged changes
+kk diff                     # Review unstaged changes
 ```
 
-## Usage
-
-### Configuration
+### Choose AI Model
 
 ```bash
-# Set API key
-kk config --key YOUR_API_KEY
-
-# Set API endpoint
-kk config --endpoint https://api.korekt.ai/api/review
-
-# Show current configuration
-kk config --show
+kk review -m                        # Interactive model picker
+kk review -m gemini-3-flash-preview # Direct selection
 ```
 
-### Review Commands
+Available models (ranked by recommendation):
+
+1. **gemini-3-flash-preview** - Most efficient, recommended for daily use
+2. **gemini-3-pro-preview** - Best quality for complex reviews
+3. **gemini-2.5-pro** - High quality alternative
+4. **gemini-2.5-flash** - Legacy, avoid
+
+### Ignore Files
 
 ```bash
-# Review committed changes (auto-detect base branch)
-kk review
-
-# Review against specific branch
-kk review main
-
-# Review with ignored files
 kk review main --ignore "*.lock" "dist/*"
-
-# Dry run (preview payload without sending)
-kk review main --dry-run
-
-# Output JSON for CI/CD integration
-kk review main --json
-
-# Review staged changes only
-kk stg
-# Aliases: kk staged, kk cached
-
-# Review unstaged changes only
-kk diff
-
-# JSON output works with all review commands
-kk stg --json
-kk diff --json
 ```
 
-### Alternative Command
+## CI/CD Integration
 
-Both `kk` and `korekt` commands are available:
+### Post to Pull Request
 
 ```bash
-korekt review main  # Same as: kk review main
+kk review --comment         # Auto-posts findings to PR
+```
+
+Works with GitHub Actions, Azure Pipelines, and Bitbucket Pipelines.
+
+### Post to Ticket
+
+```bash
+kk review --post-ticket     # Posts findings to linked Jira/Azure ticket
+```
+
+Ticket IDs are automatically extracted from branch names and commit messages.
+
+### JSON Output
+
+```bash
+kk review main --json       # Machine-readable output
 ```
 
 ## Environment Variables
 
-You can also configure using environment variables:
-
 ```bash
 export KOREKT_API_KEY="your-api-key"
-export KOREKT_API_ENDPOINT="https://api.korekt.ai/api/review"
 ```
 
-Note: Config file takes precedence over environment variables.
+Alternative to `kk config --key`. Config file takes precedence.
 
 ## Help
-
-For more options and detailed help:
 
 ```bash
 kk --help
 kk review --help
 ```
 
-## Development
-
-To run tests:
-```bash
-npm test
-```
-
 ## License
 
-MIT © [Vladan Djokic](https://korekt.ai)
-
-See [LICENSE](./LICENSE) for details.
+MIT - See [LICENSE](./LICENSE) for details.
