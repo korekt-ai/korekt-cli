@@ -19,6 +19,9 @@ import { detectCIProvider, truncateFileData, formatErrorOutput } from './utils.j
 // Re-export utilities for backward compatibility
 export { detectCIProvider, truncateFileData, formatErrorOutput, getPrUrl } from './utils.js';
 
+// Export for testing
+export { GEMINI_MODELS, resolveModel };
+
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
 
@@ -102,6 +105,19 @@ const GEMINI_MODELS = [
     label: 'gemini-3-flash-preview (experimental - the most efficient model)',
   },
 ];
+
+/**
+ * Resolve model input - supports numeric shortcuts (1-4) or full model names
+ * @param {string} input - Model input (number or name)
+ * @returns {string} - Resolved model name
+ */
+function resolveModel(input) {
+  const num = parseInt(input, 10);
+  if (!isNaN(num) && num >= 1 && num <= GEMINI_MODELS.length) {
+    return GEMINI_MODELS[num - 1].value;
+  }
+  return input;
+}
 
 /**
  * Prompt user to select a Gemini model
@@ -258,7 +274,8 @@ program
       selectedModel = await selectModel();
       log(chalk.green(`Using model: ${selectedModel}\n`));
     } else if (typeof options.model === 'string') {
-      selectedModel = options.model;
+      selectedModel = resolveModel(options.model);
+      log(chalk.green(`Using model: ${selectedModel}\n`));
     }
 
     // Fetch file rules config from API
@@ -465,7 +482,8 @@ async function reviewUncommitted(mode, options) {
     selectedModel = await selectModel();
     log(chalk.green(`Using model: ${selectedModel}\n`));
   } else if (typeof options.model === 'string') {
-    selectedModel = options.model;
+    selectedModel = resolveModel(options.model);
+    log(chalk.green(`Using model: ${selectedModel}\n`));
   }
 
   // Fetch file rules config from API

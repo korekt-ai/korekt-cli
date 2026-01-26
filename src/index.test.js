@@ -5,6 +5,7 @@ import {
   detectCIProvider,
   getPrUrl,
   handleSkippedResponse,
+  resolveModel,
 } from './index.js';
 
 describe('CLI JSON output mode', () => {
@@ -551,6 +552,34 @@ describe('--model flag behavior', () => {
       validModels.forEach((model) => {
         expect(model).toMatch(/^gemini-/);
       });
+    });
+  });
+
+  describe('numeric model shortcuts', () => {
+    it('should resolve "1" to gemini-2.5-pro', () => {
+      expect(resolveModel('1')).toBe('gemini-2.5-pro');
+    });
+
+    it('should resolve "2" to gemini-2.5-flash', () => {
+      expect(resolveModel('2')).toBe('gemini-2.5-flash');
+    });
+
+    it('should resolve "3" to gemini-3-pro-preview', () => {
+      expect(resolveModel('3')).toBe('gemini-3-pro-preview');
+    });
+
+    it('should resolve "4" to gemini-3-flash-preview', () => {
+      expect(resolveModel('4')).toBe('gemini-3-flash-preview');
+    });
+
+    it('should pass through full model names unchanged', () => {
+      expect(resolveModel('gemini-3-pro-preview')).toBe('gemini-3-pro-preview');
+    });
+
+    it('should pass through invalid input unchanged', () => {
+      expect(resolveModel('invalid')).toBe('invalid');
+      expect(resolveModel('0')).toBe('0');
+      expect(resolveModel('5')).toBe('5');
     });
   });
 });
