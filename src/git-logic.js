@@ -18,7 +18,9 @@ export function truncateContent(content, maxLines = 2000) {
   const halfMax = Math.floor(maxLines / 2);
   const head = lines.slice(0, halfMax).join('\n');
   const tail = lines.slice(-halfMax).join('\n');
-  return `${head}\n\n... [truncated] ...\n\n${tail}`;
+  const linesKept = 2 * halfMax;
+  const omittedLines = lines.length - linesKept;
+  return `${head}\n\n... [${omittedLines} lines truncated] ...\n\n${tail}`;
 }
 
 /**

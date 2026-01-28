@@ -450,7 +450,7 @@ describe('truncateContent', () => {
     // Should contain head and tail
     expect(result).toContain('line 0');
     expect(result).toContain('line 999'); // Last line of head (first 1000 lines)
-    expect(result).toContain('... [truncated] ...');
+    expect(result).toContain('... [1000 lines truncated] ...');
     expect(result).toContain('line 2000'); // First line of tail (last 1000 lines)
     expect(result).toContain('line 2999');
 
@@ -464,7 +464,7 @@ describe('truncateContent', () => {
 
     expect(result).toContain('line 0');
     expect(result).toContain('line 49'); // Last of first 50
-    expect(result).toContain('... [truncated] ...');
+    expect(result).toContain('... [100 lines truncated] ...');
     expect(result).toContain('line 150'); // First of last 50
     expect(result).toContain('line 199');
   });
