@@ -38,7 +38,7 @@ kk review -m gemini-3-flash-preview # Direct selection
 Available models (ranked by recommendation):
 
 1. **gemini-3-flash-preview** - Most efficient, recommended for daily use
-2. **gemini-3-pro-preview** - Best quality for complex reviews
+2. **gemini-3.1-pro-preview** - Best quality for complex reviews
 3. **gemini-2.5-pro** - High quality alternative
 4. **gemini-2.5-flash** - Legacy, avoid
 
