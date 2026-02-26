@@ -31,31 +31,52 @@ export function truncateContent(content, maxLines = 2000) {
  */
 export function normalizeRepoUrl(url) {
   // Handle Azure DevOps SSH format: git@ssh.dev.azure.com:v3/org/project/repo
-  const azureDevOpsSshMatch = url.match(/git@ssh\.dev\.azure\.com:v3\/([^/]+)\/([^/]+)\/(.+)/);
+  // [^:]* allows SSH config aliases like git@ssh.dev.azure.com-work:v3/...
+  const azureDevOpsSshMatch = url.match(
+    /git@ssh\.dev\.azure\.com[^:]*:v3\/([^/]+)\/([^/]+)\/(.+?)(?:\.git)?$/
+  );
   if (azureDevOpsSshMatch) {
     const [, org, project, repo] = azureDevOpsSshMatch;
     return `https://dev.azure.com/${org}/${project}/_git/${repo}`;
   }
 
   // Handle GitHub SSH format: git@github.com:user/repo.git
-  const githubSshMatch = url.match(/git@github\.com:([^/]+)\/(.+?)(?:\.git)?$/);
+  // [^:]* allows SSH config aliases like git@github.com-personal:user/repo.git
+  const githubSshMatch = url.match(/git@github\.com[^:]*:([^/]+)\/(.+?)(?:\.git)?$/);
   if (githubSshMatch) {
     const [, user, repo] = githubSshMatch;
     return `https://github.com/${user}/${repo}`;
   }
 
   // Handle GitLab SSH format: git@gitlab.com:user/repo.git
-  const gitlabSshMatch = url.match(/git@gitlab\.com:([^/]+)\/(.+?)(?:\.git)?$/);
+  // [^:]* allows SSH config aliases like git@gitlab.com-work:user/repo.git
+  const gitlabSshMatch = url.match(/git@gitlab\.com[^:]*:([^/]+)\/(.+?)(?:\.git)?$/);
   if (gitlabSshMatch) {
     const [, user, repo] = gitlabSshMatch;
     return `https://gitlab.com/${user}/${repo}`;
   }
 
   // Handle Bitbucket SSH format: git@bitbucket.org:user/repo.git
-  const bitbucketSshMatch = url.match(/git@bitbucket\.org:([^/]+)\/(.+?)(?:\.git)?$/);
+  // [^:]* allows SSH config aliases like git@bitbucket.org-astoisavljevic:user/repo.git
+  const bitbucketSshMatch = url.match(/git@bitbucket\.org[^:]*:([^/]+)\/(.+?)(?:\.git)?$/);
   if (bitbucketSshMatch) {
     const [, user, repo] = bitbucketSshMatch;
     return `https://bitbucket.org/${user}/${repo}`;
+  }
+
+  // Generic SSH fallback for self-hosted/unknown providers
+  // SCP-style: git@host:path or user@host:path (negative lookahead excludes URLs with ://)
+  const scpMatch = url.match(/^(?!.*:\/\/)([^@]+)@([^:]+):(.+?)(?:\.git)?$/);
+  if (scpMatch) {
+    const [, , host, path] = scpMatch;
+    return `https://${host}/${path}`;
+  }
+
+  // SSH protocol: ssh://user@host/path or ssh://user@host:port/path
+  const sshProtoMatch = url.match(/^ssh:\/\/(?:[^@]+@)?([^/:]+)(?::\d+)?\/(.+?)(?:\.git)?$/);
+  if (sshProtoMatch) {
+    const [, host, path] = sshProtoMatch;
+    return `https://${host}/${path}`;
   }
 
   // If already HTTPS or other format, return as-is (possibly removing .git suffix)

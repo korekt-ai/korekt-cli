@@ -477,6 +477,12 @@ describe('normalizeRepoUrl', () => {
     expect(normalizeRepoUrl(sshUrl)).toBe(expected);
   });
 
+  it('should strip .git suffix from Azure DevOps SSH URL', () => {
+    const sshUrl = 'git@ssh.dev.azure.com:v3/MyOrg/MyProject/MyRepo.git';
+    const expected = 'https://dev.azure.com/MyOrg/MyProject/_git/MyRepo';
+    expect(normalizeRepoUrl(sshUrl)).toBe(expected);
+  });
+
   it('should normalize GitHub SSH URL to HTTPS', () => {
     const sshUrl = 'git@github.com:user/repo.git';
     const expected = 'https://github.com/user/repo';
@@ -521,6 +527,68 @@ describe('normalizeRepoUrl', () => {
   it('should keep Azure DevOps HTTPS URLs unchanged', () => {
     const adoUrl = 'https://dev.azure.com/VanillaSoftCollection/VanillaLand/_git/VanillaLand';
     expect(normalizeRepoUrl(adoUrl)).toBe(adoUrl);
+  });
+
+  // SSH config alias tests (e.g., multiple SSH keys per provider)
+  it('should normalize Bitbucket SSH URL with config alias', () => {
+    const sshUrl = 'git@bitbucket.org-astoisavljevic:jatheon/audit.git';
+    const expected = 'https://bitbucket.org/jatheon/audit';
+    expect(normalizeRepoUrl(sshUrl)).toBe(expected);
+  });
+
+  it('should normalize GitHub SSH URL with config alias', () => {
+    const sshUrl = 'git@github.com-personal:user/repo.git';
+    const expected = 'https://github.com/user/repo';
+    expect(normalizeRepoUrl(sshUrl)).toBe(expected);
+  });
+
+  it('should normalize GitLab SSH URL with config alias', () => {
+    const sshUrl = 'git@gitlab.com-work:team/project.git';
+    const expected = 'https://gitlab.com/team/project';
+    expect(normalizeRepoUrl(sshUrl)).toBe(expected);
+  });
+
+  it('should normalize Azure DevOps SSH URL with config alias', () => {
+    const sshUrl = 'git@ssh.dev.azure.com-work:v3/MyOrg/MyProject/MyRepo';
+    const expected = 'https://dev.azure.com/MyOrg/MyProject/_git/MyRepo';
+    expect(normalizeRepoUrl(sshUrl)).toBe(expected);
+  });
+
+  // Generic SSH fallback for self-hosted/unknown providers
+  it('should normalize generic SCP-style SSH URL with IP address', () => {
+    const sshUrl = 'git@192.168.1.1:org/repo.git';
+    const expected = 'https://192.168.1.1/org/repo';
+    expect(normalizeRepoUrl(sshUrl)).toBe(expected);
+  });
+
+  it('should normalize generic SCP-style SSH URL with hostname', () => {
+    const sshUrl = 'git@selfhosted.example.com:team/repo.git';
+    const expected = 'https://selfhosted.example.com/team/repo';
+    expect(normalizeRepoUrl(sshUrl)).toBe(expected);
+  });
+
+  it('should normalize generic SCP-style SSH URL without .git suffix', () => {
+    const sshUrl = 'git@selfhosted.example.com:team/repo';
+    const expected = 'https://selfhosted.example.com/team/repo';
+    expect(normalizeRepoUrl(sshUrl)).toBe(expected);
+  });
+
+  it('should normalize ssh:// protocol URL', () => {
+    const sshUrl = 'ssh://git@selfhosted.example.com/team/repo.git';
+    const expected = 'https://selfhosted.example.com/team/repo';
+    expect(normalizeRepoUrl(sshUrl)).toBe(expected);
+  });
+
+  it('should normalize ssh:// protocol URL with port (port dropped)', () => {
+    const sshUrl = 'ssh://git@myhost:2222/org/repo.git';
+    const expected = 'https://myhost/org/repo';
+    expect(normalizeRepoUrl(sshUrl)).toBe(expected);
+  });
+
+  it('should normalize ssh:// protocol URL without username', () => {
+    const sshUrl = 'ssh://myhost/org/repo.git';
+    const expected = 'https://myhost/org/repo';
+    expect(normalizeRepoUrl(sshUrl)).toBe(expected);
   });
 });
 
