@@ -4,6 +4,21 @@ import { detectCIProvider, getPrUrl, getSourceBranchFromCI } from './utils.js';
 import { shouldSkip, isDiffOnly, isBinary } from './file-rules.js';
 
 /**
+ * Recursively sanitize all strings in a payload to ensure valid UTF-8.
+ * Uses String.prototype.toWellFormed() (Node.js 20+) to replace lone surrogates with U+FFFD.
+ * @param {*} obj - The value to sanitize
+ * @returns {*} - Sanitized value
+ */
+export function sanitizePayloadStrings(obj) {
+  if (typeof obj === 'string') return obj.toWellFormed();
+  if (Array.isArray(obj)) return obj.map(sanitizePayloadStrings);
+  if (obj !== null && typeof obj === 'object') {
+    return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, sanitizePayloadStrings(v)]));
+  }
+  return obj;
+}
+
+/**
  * Truncate content to a maximum number of lines using "head and tail".
  * @param {string} content - The string content to truncate
  * @param {number} maxLines - The maximum number of lines to allow (default: 2000)
@@ -319,8 +334,8 @@ export async function runUncommittedReview(mode = 'unstaged', fileRulesConfig = 
       return null;
     }
 
-    // 3. Assemble payload
-    return {
+    // 3. Assemble payload (sanitize to ensure valid UTF-8 for JSON serialization)
+    return sanitizePayloadStrings({
       repo_url: normalizeRepoUrl(repoUrl.trim()),
       commit_messages: [], // No commits for uncommitted changes
       changed_files: changedFiles,
@@ -328,7 +343,7 @@ export async function runUncommittedReview(mode = 'unstaged', fileRulesConfig = 
       changed_lines: calculateChangedLines(changedFiles),
       is_ci: detectCIProvider() !== null,
       pr_url: null, // Uncommitted changes are never part of a PR
-    };
+    });
   } catch (error) {
     console.error(chalk.red('Failed to analyze uncommitted changes:'), error.message);
     if (error.stderr) {
@@ -671,8 +686,8 @@ export async function runLocalReview(
       repoRootPath
     );
 
-    // 6. Assemble the final payload
-    return {
+    // 6. Assemble the final payload (sanitize to ensure valid UTF-8 for JSON serialization)
+    return sanitizePayloadStrings({
       repo_url: normalizeRepoUrl(repoUrl.trim()),
       commit_messages: commitMessages,
       changed_files: changedFiles,
@@ -685,7 +700,7 @@ export async function runLocalReview(
       changed_lines: calculateChangedLines(changedFiles),
       is_ci: detectCIProvider() !== null,
       pr_url: getPrUrl(),
-    };
+    });
   } catch (error) {
     console.error(chalk.red('Failed to run local review analysis:'), error.message);
     if (error.stderr) {

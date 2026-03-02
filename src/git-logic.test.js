@@ -7,6 +7,7 @@ import {
   normalizeRepoUrl,
   shouldIgnoreFile,
   getContributors,
+  sanitizePayloadStrings,
 } from './git-logic.js';
 import { execa } from 'execa';
 import { detectCIProvider, getSourceBranchFromCI } from './utils.js';
@@ -1705,5 +1706,72 @@ describe('runLocalReview - detached HEAD handling', () => {
 
     expect(result).toBeDefined();
     expect(result.source_branch).toBe('HEAD');
+  });
+});
+
+describe('sanitizePayloadStrings', () => {
+  it('should pass through valid UTF-8 strings unchanged', () => {
+    expect(sanitizePayloadStrings('hello world')).toBe('hello world');
+    expect(sanitizePayloadStrings('你好世界')).toBe('你好世界');
+    expect(sanitizePayloadStrings('café')).toBe('café');
+  });
+
+  it('should replace lone surrogates with U+FFFD', () => {
+    const withLoneSurrogate = 'hello\uD800world';
+    const result = sanitizePayloadStrings(withLoneSurrogate);
+    expect(result).toBe('hello\uFFFDworld');
+    expect(result.isWellFormed()).toBe(true);
+  });
+
+  it('should recursively sanitize nested objects', () => {
+    const input = {
+      name: 'valid',
+      nested: {
+        value: 'test\uD800bad',
+      },
+    };
+    const result = sanitizePayloadStrings(input);
+    expect(result.name).toBe('valid');
+    expect(result.nested.value).toBe('test\uFFFDbad');
+    expect(result.nested.value.isWellFormed()).toBe(true);
+  });
+
+  it('should recursively sanitize arrays', () => {
+    const input = ['valid', 'bad\uDC00tail', ['nested\uD800']];
+    const result = sanitizePayloadStrings(input);
+    expect(result[0]).toBe('valid');
+    expect(result[1].isWellFormed()).toBe(true);
+    expect(result[2][0].isWellFormed()).toBe(true);
+  });
+
+  it('should pass through non-string values unchanged', () => {
+    expect(sanitizePayloadStrings(42)).toBe(42);
+    expect(sanitizePayloadStrings(true)).toBe(true);
+    expect(sanitizePayloadStrings(null)).toBe(null);
+    expect(sanitizePayloadStrings(undefined)).toBe(undefined);
+  });
+
+  it('should handle a realistic payload with mixed types', () => {
+    const payload = {
+      repo_url: 'https://github.com/org/repo',
+      commit_messages: ['fix: handle encoding\uD800'],
+      changed_files: [
+        {
+          path: 'src/file.js',
+          status: 'M',
+          diff: '@@ -1,3 +1,3 @@\n-old\uDBFF\n+new',
+          content: 'valid content',
+        },
+      ],
+      changed_lines: 5,
+      is_ci: false,
+      pr_url: null,
+    };
+    const result = sanitizePayloadStrings(payload);
+    expect(result.commit_messages[0].isWellFormed()).toBe(true);
+    expect(result.changed_files[0].diff.isWellFormed()).toBe(true);
+    expect(result.changed_lines).toBe(5);
+    expect(result.is_ci).toBe(false);
+    expect(result.pr_url).toBe(null);
   });
 });
