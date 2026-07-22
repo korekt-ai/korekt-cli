@@ -546,6 +546,7 @@ describe('--model flag behavior', () => {
         'gemini-2.5-flash',
         'gemini-3.1-pro-preview',
         'gemini-3-flash-preview',
+        'gemini-3.6-flash',
       ];
 
       // Test that all expected models are valid Gemini model names
@@ -572,6 +573,10 @@ describe('--model flag behavior', () => {
       expect(resolveModel('4')).toBe('gemini-3-flash-preview');
     });
 
+    it('should resolve "5" to gemini-3.6-flash', () => {
+      expect(resolveModel('5')).toBe('gemini-3.6-flash');
+    });
+
     it('should pass through full model names unchanged', () => {
       expect(resolveModel('gemini-3.1-pro-preview')).toBe('gemini-3.1-pro-preview');
     });
@@ -579,7 +584,7 @@ describe('--model flag behavior', () => {
     it('should pass through invalid input unchanged', () => {
       expect(resolveModel('invalid')).toBe('invalid');
       expect(resolveModel('0')).toBe('0');
-      expect(resolveModel('5')).toBe('5');
+      expect(resolveModel('6')).toBe('6');
     });
   });
 });
