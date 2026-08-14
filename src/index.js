@@ -109,12 +109,16 @@ const GEMINI_MODELS = [
   },
   {
     value: 'gemini-3.6-flash',
-    label: 'gemini-3.6-flash (latest, strong coding)',
+    label: 'gemini-3.6-flash (fast, strong coding)',
+  },
+  {
+    value: 'gemini-3.7-flash',
+    label: 'gemini-3.7-flash (latest, best coding)',
   },
 ];
 
 /**
- * Resolve model input - supports numeric shortcuts (1-5) or full model names
+ * Resolve model input - supports numeric shortcuts (1-6) or full model names
  * @param {string} input - Model input (number or name)
  * @returns {string} - Resolved model name
  */
@@ -151,13 +155,13 @@ async function selectModel() {
   log('');
 
   return new Promise((resolvePromise) => {
-    rl.question(chalk.bold('Enter number (1-5): '), (answer) => {
+    rl.question(chalk.bold('Enter number (1-6): '), (answer) => {
       rl.close();
       const num = parseInt(answer, 10);
       if (num >= 1 && num <= GEMINI_MODELS.length) {
         resolvePromise(GEMINI_MODELS[num - 1].value);
       } else {
-        log(chalk.red('Invalid selection. Please run the command again and enter 1-5.'));
+        log(chalk.red('Invalid selection. Please run the command again and enter 1-6.'));
         process.exit(1);
       }
     });
